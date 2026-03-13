@@ -168,11 +168,17 @@ export async function extractAudioFromVideo(
       }
     })
 
-    ffmpeg.on('error', (error) => {
+    ffmpeg.on('error', (error: NodeJS.ErrnoException) => {
       console.error('=== FFMPEG SPAWN ERROR ===')
       console.error('Spawn error:', error)
-      console.error('Error code:', error.code)
-      console.error('Error signal:', error.signal)
+      console.error('Error code:', error.code || 'unknown')
+      console.error('Error syscall:', error.syscall || 'unknown')
+      console.error('Error path:', error.path || 'unknown')
+      // Additional spawn-specific error properties
+      const spawnError = error as any
+      if (spawnError.signal) {
+        console.error('Error signal:', spawnError.signal)
+      }
       reject(new Error(`FFmpeg spawn error: ${error.message}`))
     })
   })
