@@ -153,7 +153,7 @@ async function assembleChunks(tempDir: string, totalChunks: number, outputPath: 
     }
 
     await new Promise<void>((resolve, reject) => {
-      writeStream.end((error) => {
+      writeStream.end((error?: Error | null) => {
         if (error) reject(error)
         else resolve()
       })
@@ -167,8 +167,8 @@ async function assembleChunks(tempDir: string, totalChunks: number, outputPath: 
 
 async function cleanupChunks(tempDir: string): Promise<void> {
   try {
-    const { rmdir } = await import('fs/promises')
-    await rmdir(tempDir, { recursive: true })
+    const { rm } = await import('fs/promises')
+    await rm(tempDir, { recursive: true, force: true })
     console.log(`[CHUNK-UPLOAD] Cleaned up temp directory: ${tempDir}`)
   } catch (error) {
     console.warn(`[CHUNK-UPLOAD] Failed to cleanup temp directory: ${tempDir}`, error)

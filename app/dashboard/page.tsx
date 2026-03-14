@@ -235,6 +235,9 @@ export default function Dashboard() {
 
       } else {
         console.log('FRONTEND: Processing direct upload response')
+        if (!uploadResponse) {
+          throw new Error('Upload response is undefined')
+        }
         console.log('FRONTEND: Response details:')
         console.log('  status:', uploadResponse.status)
         console.log('  statusText:', uploadResponse.statusText)
@@ -316,8 +319,8 @@ export default function Dashboard() {
             throw new Error(`Success response could not be parsed: ${parseError instanceof Error ? parseError.message : String(parseError)}`)
           }
         }
-      }
 
+      // Continue processing after successful upload
       updateProgress('Processing audio/video...', 30)
 
       // Step 2: Start dubbing process
@@ -329,8 +332,8 @@ export default function Dashboard() {
         body: JSON.stringify({
           fileName: uploadResult.originalName,
           targetLanguage: targetLanguage,
-          tempFilePath: uploadResult.tempFilePath,
-          fileBuffer: uploadResult.fileBuffer,
+          ...(uploadResult.tempFilePath && { tempFilePath: uploadResult.tempFilePath }),
+          ...(uploadResult.fileBuffer && { fileBuffer: uploadResult.fileBuffer }),
           inMemoryProcessing: uploadResult.inMemoryProcessing,
           chunked: uploadResult.chunked
         }),
