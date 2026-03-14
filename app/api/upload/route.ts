@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { processUploadedFile, getUploadStrategy } from '@/lib/upload-utils'
+import { processUploadedFile, getUploadStrategy, VERCEL_MAX_PAYLOAD_SIZE } from '@/lib/upload-utils'
 
 export async function POST(request: NextRequest) {
   console.log('🚀 [UPLOAD API] Production-safe upload endpoint called')
@@ -19,13 +19,17 @@ export async function POST(request: NextRequest) {
 
       if (payloadSize > strategy.maxPayloadSize) {
         console.error(`[UPLOAD API] Payload too large: ${payloadSize} bytes (max: ${strategy.maxPayloadSize})`)
+
+        // Suggest chunked upload for large files
         return NextResponse.json(
           {
-            error: 'File too large for upload',
-            details: `File size ${(payloadSize / (1024 * 1024)).toFixed(2)}MB exceeds the ${(strategy.maxPayloadSize / (1024 * 1024)).toFixed(2)}MB limit for production deployment. Please compress your file or use a smaller file.`,
+            error: 'File too large for direct upload',
+            details: `File size ${(payloadSize / (1024 * 1024)).toFixed(2)}MB exceeds the ${(strategy.maxPayloadSize / (1024 * 1024)).toFixed(2)}MB limit. Use chunked upload for files larger than ${(VERCEL_MAX_PAYLOAD_SIZE / (1024 * 1024)).toFixed(1)}MB.`,
             maxSize: strategy.maxPayloadSize,
             actualSize: payloadSize,
-            environment: strategy.environment
+            environment: strategy.environment,
+            shouldUseChunkedUpload: true,
+            chunkSize: Math.floor(VERCEL_MAX_PAYLOAD_SIZE * 0.8) // 80% of max for safety
           },
           { status: 413 }
         )
@@ -45,13 +49,16 @@ export async function POST(request: NextRequest) {
       // Check if it's a payload too large error
       if (parseError instanceof Error &&
           (parseError.message.includes('PayloadTooLargeError') ||
+           parseError.message.includes('FUNCTION_PAYLOAD_TOO_LARGE') ||
            parseError.message.includes('body limit') ||
            parseError.message.includes('request entity too large'))) {
         return NextResponse.json(
           {
             error: 'File too large',
-            details: 'The uploaded file exceeds the server limits. Please use a smaller file (max 4.5MB in production).',
-            environment: strategy.environment
+            details: 'The uploaded file exceeds the server limits. Use chunked upload for large files.',
+            environment: strategy.environment,
+            shouldUseChunkedUpload: true,
+            chunkSize: Math.floor(VERCEL_MAX_PAYLOAD_SIZE * 0.8)
           },
           { status: 413 }
         )
@@ -81,41 +88,92 @@ export async function POST(request: NextRequest) {
 
     console.log(`[UPLOAD API] File received: ${file.name} (${file.size} bytes, ${file.type})`)
 
-    // Process the file using our production-safe utility
-    console.log('[UPLOAD API] Processing file with production-safe strategy...')
-    const uploadResult = await processUploadedFile(file)
+    // For production, process small files in-memory instead of temp files
+    // This avoids the file system sharing issue between serverless functions
+    if (strategy.environment === 'production') {
+      console.log('[UPLOAD API] Production mode: processing file in-memory')
 
-    if (!uploadResult.success) {
-      console.error('[UPLOAD API] File processing failed:', uploadResult.error)
-      return NextResponse.json(
-        {
-          error: 'File processing failed',
-          details: uploadResult.error || 'Unknown processing error'
-        },
-        { status: 400 }
-      )
+      // Convert file to buffer immediately
+      const fileBuffer = Buffer.from(await file.arrayBuffer())
+
+      // Validate file
+      const lowerFileName = file.name.toLowerCase()
+      const isVideo = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v'].some(ext => lowerFileName.endsWith(ext))
+      const isAudio = ['.mp3', '.wav', '.flac', '.m4a', '.aac', '.ogg'].some(ext => lowerFileName.endsWith(ext))
+
+      if (!isVideo && !isAudio) {
+        return NextResponse.json(
+          {
+            error: 'Invalid file type',
+            details: `File extension not supported. Supported formats: mp3, wav, flac, m4a, aac, ogg, mp4, mov, avi, mkv, webm, m4v`
+          },
+          { status: 400 }
+        )
+      }
+
+      const processingTime = Date.now() - startTime
+      console.log(`[UPLOAD API] Production upload completed in ${processingTime}ms`)
+
+      // Return the file data directly for immediate processing
+      const responseData = {
+        success: true,
+        fileName: file.name,
+        originalName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+        isVideo,
+        isAudio,
+        // Pass the file buffer as base64 for production processing
+        fileBuffer: fileBuffer.toString('base64'),
+        processingTimeMs: processingTime,
+        environment: strategy.environment,
+        inMemoryProcessing: true
+      }
+
+      console.log('[UPLOAD API] Production response (in-memory):', {
+        ...responseData,
+        fileBuffer: `[${responseData.fileBuffer.length} chars]` // Don't log full buffer
+      })
+
+      return NextResponse.json(responseData)
+
+    } else {
+      // Development mode: use file system as before
+      console.log('[UPLOAD API] Development mode: using file system processing')
+
+      const uploadResult = await processUploadedFile(file)
+
+      if (!uploadResult.success) {
+        console.error('[UPLOAD API] File processing failed:', uploadResult.error)
+        return NextResponse.json(
+          {
+            error: 'File processing failed',
+            details: uploadResult.error || 'Unknown processing error'
+          },
+          { status: 400 }
+        )
+      }
+
+      const processingTime = Date.now() - startTime
+      console.log(`[UPLOAD API] Development upload completed in ${processingTime}ms`)
+
+      const responseData = {
+        success: true,
+        fileName: uploadResult.tempFilePath ? uploadResult.tempFilePath.split('/').pop() : file.name,
+        originalName: uploadResult.originalName,
+        fileSize: uploadResult.fileSize,
+        fileType: uploadResult.fileType,
+        isVideo: uploadResult.isVideo,
+        isAudio: uploadResult.isAudio,
+        tempFilePath: uploadResult.tempFilePath,
+        processingTimeMs: processingTime,
+        environment: strategy.environment,
+        inMemoryProcessing: false
+      }
+
+      console.log('[UPLOAD API] Development response:', responseData)
+      return NextResponse.json(responseData)
     }
-
-    const processingTime = Date.now() - startTime
-    console.log(`[UPLOAD API] Upload completed successfully in ${processingTime}ms`)
-
-    // Return success response
-    const responseData = {
-      success: true,
-      fileName: uploadResult.tempFilePath ? uploadResult.tempFilePath.split('/').pop() : file.name,
-      originalName: uploadResult.originalName,
-      fileSize: uploadResult.fileSize,
-      fileType: uploadResult.fileType,
-      isVideo: uploadResult.isVideo,
-      isAudio: uploadResult.isAudio,
-      tempFilePath: uploadResult.tempFilePath, // This will be used by the dubbing endpoint
-      processingTimeMs: processingTime,
-      environment: strategy.environment,
-      uploadStrategy: strategy
-    }
-
-    console.log('[UPLOAD API] Success response:', JSON.stringify(responseData, null, 2))
-    return NextResponse.json(responseData)
 
   } catch (error) {
     const processingTime = Date.now() - startTime
@@ -138,10 +196,11 @@ export async function POST(request: NextRequest) {
         errorMessage = 'Insufficient server storage'
         errorDetails = 'The server is out of storage space. Please try again later.'
       } else if (error.message.includes('PayloadTooLargeError') ||
+                 error.message.includes('FUNCTION_PAYLOAD_TOO_LARGE') ||
                  error.message.includes('entity too large') ||
                  error.message.includes('request entity too large')) {
         errorMessage = 'File too large'
-        errorDetails = `File exceeds the ${(strategy.maxPayloadSize / (1024 * 1024)).toFixed(2)}MB limit for ${strategy.environment} environment.`
+        errorDetails = `File exceeds the ${(strategy.maxPayloadSize / (1024 * 1024)).toFixed(2)}MB limit for ${strategy.environment} environment. Use chunked upload for large files.`
         statusCode = 413
       } else if (error.message.includes('EMFILE') || error.message.includes('ENFILE')) {
         errorMessage = 'Server busy'
@@ -155,7 +214,8 @@ export async function POST(request: NextRequest) {
         details: errorDetails,
         environment: strategy.environment,
         maxPayloadSize: strategy.maxPayloadSize,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        shouldUseChunkedUpload: statusCode === 413
       },
       { status: statusCode }
     )

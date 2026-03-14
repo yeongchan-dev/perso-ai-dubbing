@@ -19,18 +19,19 @@ export async function POST(request: NextRequest) {
     processingStep = 'parsing request'
 
     const body = await request.json()
-    const { fileName, targetLanguage, tempFilePath } = body
+    const { fileName, targetLanguage, tempFilePath, fileBuffer, inMemoryProcessing, chunked } = body
 
     console.log(`Received request:`)
     console.log(`- fileName: ${fileName}`)
     console.log(`- targetLanguage: ${targetLanguage}`)
     console.log(`- tempFilePath: ${tempFilePath}`)
+    console.log(`- inMemoryProcessing: ${inMemoryProcessing}`)
+    console.log(`- chunked: ${chunked}`)
 
-    if (!fileName || !targetLanguage || !tempFilePath) {
+    if (!fileName || !targetLanguage) {
       const missingParams = []
       if (!fileName) missingParams.push('fileName')
       if (!targetLanguage) missingParams.push('targetLanguage')
-      if (!tempFilePath) missingParams.push('tempFilePath')
 
       return NextResponse.json(
         {
@@ -42,21 +43,67 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verify the temp file still exists
-    processingStep = 'file verification'
-    try {
-      await access(tempFilePath)
-      console.log(`Temp file verified: ${tempFilePath}`)
-    } catch (error) {
-      console.error(`Temp file not found: ${tempFilePath}`, error)
+    // Handle different processing modes
+    let actualFilePath: string
+
+    if (inMemoryProcessing && fileBuffer) {
+      // Production mode: create temp file from buffer
+      processingStep = 'creating temp file from buffer'
+      console.log('[DUB] Production mode: creating temp file from in-memory buffer')
+
+      try {
+        const tempFileName = `prod_${Date.now()}_${fileName.replace(/[^a-zA-Z0-9.-]/g, '_')}`
+        actualFilePath = path.join(tmpdir(), tempFileName)
+
+        const buffer = Buffer.from(fileBuffer, 'base64')
+        await writeFile(actualFilePath, buffer)
+        tempFiles.push(actualFilePath)
+
+        console.log(`[DUB] Created temp file from buffer: ${actualFilePath} (${buffer.length} bytes)`)
+
+      } catch (error) {
+        console.error('[DUB] Failed to create temp file from buffer:', error)
+        return NextResponse.json(
+          {
+            error: 'File processing failed',
+            details: 'Could not process uploaded file data',
+            step: processingStep,
+            environment: strategy.environment
+          },
+          { status: 500 }
+        )
+      }
+
+    } else if (tempFilePath) {
+      // Development mode or chunked upload: verify file exists
+      processingStep = 'file verification'
+      try {
+        await access(tempFilePath)
+        actualFilePath = tempFilePath
+        tempFiles.push(tempFilePath) // Add to cleanup list
+        console.log(`Temp file verified: ${tempFilePath}`)
+      } catch (error) {
+        console.error(`Temp file not found: ${tempFilePath}`, error)
+        return NextResponse.json(
+          {
+            error: 'Uploaded file not found',
+            details: 'The uploaded file has expired or was not found. Please upload again.',
+            step: processingStep,
+            environment: strategy.environment
+          },
+          { status: 404 }
+        )
+      }
+
+    } else {
       return NextResponse.json(
         {
-          error: 'Uploaded file not found',
-          details: 'The uploaded file has expired or was not found. Please upload again.',
+          error: 'No file data provided',
+          details: 'Either tempFilePath or fileBuffer must be provided',
           step: processingStep,
           environment: strategy.environment
         },
-        { status: 404 }
+        { status: 400 }
       )
     }
 
@@ -78,8 +125,7 @@ export async function POST(request: NextRequest) {
       throw new Error(`Service initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
 
-    let audioFilePath = tempFilePath
-    tempFiles.push(tempFilePath) // Add to cleanup list
+    let audioFilePath = actualFilePath
 
     // Step 1: Determine file type and handle accordingly
     processingStep = 'file type detection'
@@ -103,12 +149,12 @@ export async function POST(request: NextRequest) {
       console.log('Video file detected, extracting audio...')
 
       try {
-        audioExtractionResult = await extractAudioFromVideo(tempFilePath, tmpdir())
+        audioExtractionResult = await extractAudioFromVideo(actualFilePath, tmpdir())
         audioFilePath = audioExtractionResult.audioPath
         tempFiles.push(audioExtractionResult.audioPath)
 
         console.log(`Audio extraction successful:`)
-        console.log(`- Original video: ${tempFilePath}`)
+        console.log(`- Original video: ${actualFilePath}`)
         console.log(`- Extracted audio: ${audioFilePath}`)
       } catch (error) {
         console.error('Audio extraction failed:', error)
