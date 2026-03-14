@@ -12,11 +12,17 @@ export interface ChunkedUploadResult {
   success: boolean
   tempFilePath?: string
   originalName: string
+  fileName?: string
   fileSize: number
+  fileType?: string
   isVideo: boolean
   isAudio: boolean
   error?: string
   uploadId: string
+  chunked?: boolean
+  inMemoryProcessing?: boolean
+  fileBuffer?: string | null
+  environment?: string
 }
 
 const DEFAULT_CHUNK_SIZE = 3.5 * 1024 * 1024 // 3.5MB chunks (safely under 4.5MB limit)

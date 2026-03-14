@@ -192,15 +192,20 @@ export default function Dashboard() {
 
           // For chunked uploads, we need to get the assembled file path from the server response
           console.log('FRONTEND: Chunked upload completed successfully')
+          console.log('FRONTEND: Chunked result:', chunkedResult)
           uploadResult = {
             success: true,
+            fileName: chunkedResult.fileName || chunkedResult.originalName,
             originalName: chunkedResult.originalName,
             fileSize: chunkedResult.fileSize,
+            fileType: chunkedResult.fileType || '',
             isVideo: chunkedResult.isVideo,
             isAudio: chunkedResult.isAudio,
-            tempFilePath: chunkedResult.tempFilePath,  // This should be set by the final chunk response
-            chunked: true,
-            inMemoryProcessing: false  // Chunked uploads use file system
+            tempFilePath: chunkedResult.tempFilePath,
+            chunked: chunkedResult.chunked || true,
+            inMemoryProcessing: chunkedResult.inMemoryProcessing || false,
+            fileBuffer: chunkedResult.fileBuffer || null,
+            environment: chunkedResult.environment || 'chunked'
           }
 
         } catch (chunkError) {

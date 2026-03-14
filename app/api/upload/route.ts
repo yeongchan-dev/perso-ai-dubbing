@@ -127,7 +127,9 @@ export async function POST(request: NextRequest) {
         fileBuffer: fileBuffer.toString('base64'),
         processingTimeMs: processingTime,
         environment: strategy.environment,
-        inMemoryProcessing: true
+        inMemoryProcessing: true,
+        chunked: false,  // Production small files are not chunked
+        tempFilePath: null  // Production doesn't use temp file paths
       }
 
       console.log('[UPLOAD API] Production response (in-memory):', {
@@ -168,7 +170,9 @@ export async function POST(request: NextRequest) {
         tempFilePath: uploadResult.tempFilePath,
         processingTimeMs: processingTime,
         environment: strategy.environment,
-        inMemoryProcessing: false
+        inMemoryProcessing: false,
+        chunked: false,  // Development direct uploads are not chunked
+        fileBuffer: null  // Development doesn't use file buffers
       }
 
       console.log('[UPLOAD API] Development response:', responseData)

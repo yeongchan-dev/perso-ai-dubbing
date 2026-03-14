@@ -97,14 +97,18 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           success: true,
           message: 'File uploaded and assembled successfully',
-          tempFilePath: finalFilePath,
+          fileName: fileName,
           originalName: fileName,
+          tempFilePath: finalFilePath,
           fileSize: stats.size,
           fileType: '', // We don't have MIME type from chunks
           isVideo,
           isAudio,
           uploadId,
-          chunked: true
+          chunked: true,
+          inMemoryProcessing: false,  // Chunked uploads use file system
+          fileBuffer: null,  // Chunked uploads don't use buffers
+          environment: 'chunked'  // Indicate this came from chunked upload
         })
 
       } catch (assemblyError) {
