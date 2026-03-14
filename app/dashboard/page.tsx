@@ -42,11 +42,41 @@ export default function Dashboard() {
   }, [session, status, router])
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('FRONTEND: handleFileSelect called')
+    console.log('FRONTEND: Event target:', event.target)
+    console.log('FRONTEND: Files list:', event.target.files)
+
     const file = event.target.files?.[0]
+    console.log('FRONTEND: Selected file object:', file)
+
     if (file) {
-      setSelectedFile(file)
-      setResult(null)
-      setError(null)
+      console.log('FRONTEND: File validation:')
+      console.log('  name:', file.name)
+      console.log('  size:', file.size)
+      console.log('  type:', file.type)
+      console.log('  lastModified:', file.lastModified)
+      console.log('  webkitRelativePath:', file.webkitRelativePath)
+
+      // Check for any special characters or potential validation issues
+      console.log('FRONTEND: Filename character analysis:')
+      const fileName = file.name
+      for (let i = 0; i < fileName.length; i++) {
+        const char = fileName[i]
+        const charCode = char.charCodeAt(0)
+        console.log(`  ${i}: "${char}" (code: ${charCode})`)
+      }
+
+      try {
+        console.log('FRONTEND: Setting selected file...')
+        setSelectedFile(file)
+        setResult(null)
+        setError(null)
+        console.log('FRONTEND: File selection completed successfully')
+      } catch (setFileError) {
+        console.error('FRONTEND: Error setting selected file:', setFileError)
+      }
+    } else {
+      console.log('FRONTEND: No file selected or file is null')
     }
   }
 
@@ -59,9 +89,34 @@ export default function Dashboard() {
   }
 
   const startDubbing = async () => {
+    console.log('🟢🟢🟢 FRONTEND: startDubbing function called 🟢🟢🟢')
+    console.log('🟢🟢🟢 FRONTEND: startDubbing function called 🟢🟢🟢')
+    console.log('🟢🟢🟢 FRONTEND: startDubbing function called 🟢🟢🟢')
+
+    console.log('FRONTEND: Checking prerequisites...')
+    console.log('FRONTEND: selectedFile:', selectedFile)
+    console.log('FRONTEND: targetLanguage:', targetLanguage)
+
     if (!selectedFile || !targetLanguage) {
+      console.log('FRONTEND: Missing prerequisites, showing error')
       setError('Please select a file and target language')
       return
+    }
+
+    console.log('FRONTEND: Prerequisites satisfied, starting upload process')
+
+    // Pre-check file size for better UX
+    const maxSizeBytes = 50 * 1024 * 1024 // 50MB general limit
+    const productionMaxBytes = 4.5 * 1024 * 1024 // 4.5MB production limit
+
+    if (selectedFile.size > maxSizeBytes) {
+      console.error(`FRONTEND: File too large - ${selectedFile.size} bytes > ${maxSizeBytes} bytes`)
+      setError(`File too large. Maximum size is 50MB, but your file is ${(selectedFile.size / (1024 * 1024)).toFixed(1)}MB. Please use a smaller file.`)
+      return
+    }
+
+    if (selectedFile.size > productionMaxBytes) {
+      console.warn(`FRONTEND: File size warning - file is ${(selectedFile.size / (1024 * 1024)).toFixed(1)}MB, which may fail in production (limit: 4.5MB)`)
     }
 
     setError(null)
@@ -69,21 +124,157 @@ export default function Dashboard() {
     setProcessing({ isProcessing: true, currentStep: 'Uploading file...', progress: 10 })
 
     try {
+      console.log('FRONTEND: Entering try block for upload process')
+
       // Step 1: Upload file
-      const formData = new FormData()
-      formData.append('file', selectedFile)
+      console.log('===== FRONTEND UPLOAD START =====')
+      console.log('Selected file details:')
+      console.log('  name:', selectedFile.name)
+      console.log('  size:', selectedFile.size)
+      console.log('  type:', selectedFile.type)
+      console.log('  lastModified:', selectedFile.lastModified)
 
-      const uploadResponse = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      })
+      console.log('FRONTEND: About to create FormData...')
+      let formData
+      try {
+        formData = new FormData()
+        console.log('FRONTEND: FormData created successfully')
 
-      if (!uploadResponse.ok) {
-        const uploadError = await uploadResponse.json()
-        throw new Error(uploadError.error || 'Upload failed')
+        console.log('FRONTEND: About to append file to FormData...')
+        formData.append('file', selectedFile)
+        console.log('FRONTEND: File appended to FormData successfully')
+
+        console.log('FRONTEND: FormData validation - checking entries:')
+        let entryCount = 0
+        for (let pair of formData.entries()) {
+          entryCount++
+          console.log(`  Entry ${entryCount} - key:`, pair[0], 'value:', pair[1])
+          if (pair[1] instanceof File) {
+            console.log(`    File details - name: ${pair[1].name}, size: ${pair[1].size}, type: ${pair[1].type}`)
+          }
+        }
+        console.log(`FRONTEND: Total FormData entries: ${entryCount}`)
+
+      } catch (formDataError) {
+        console.error('FRONTEND: Error creating FormData:', formDataError)
+        throw new Error(`FormData creation failed: ${formDataError instanceof Error ? formDataError.message : String(formDataError)}`)
       }
 
-      const uploadResult = await uploadResponse.json()
+      console.log('FRONTEND: About to call fetch to /api/upload')
+      console.log('FRONTEND: Fetch URL: /api/upload')
+      console.log('FRONTEND: Fetch method: POST')
+      console.log('FRONTEND: Fetch body: FormData object')
+
+      let uploadResponse
+      try {
+        console.log('⭐⭐⭐ FRONTEND: Calling fetch now... ⭐⭐⭐')
+        uploadResponse = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        })
+        console.log('⭐⭐⭐ FRONTEND: fetch call completed ⭐⭐⭐')
+      } catch (fetchError) {
+        console.error('FRONTEND: fetch call threw an error:', fetchError)
+        console.error('FRONTEND: fetch error details:', {
+          name: fetchError instanceof Error ? fetchError.name : 'unknown',
+          message: fetchError instanceof Error ? fetchError.message : String(fetchError),
+          stack: fetchError instanceof Error ? fetchError.stack : 'no stack trace'
+        })
+        throw new Error(`Network request failed: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`)
+      }
+
+      console.log('FRONTEND: Response received successfully')
+      console.log('FRONTEND: Response details:')
+      console.log('  status:', uploadResponse.status)
+      console.log('  statusText:', uploadResponse.statusText)
+      console.log('  ok:', uploadResponse.ok)
+      console.log('  type:', uploadResponse.type)
+      console.log('  url:', uploadResponse.url)
+      console.log('  redirected:', uploadResponse.redirected)
+      console.log('  headers:', Object.fromEntries(uploadResponse.headers.entries()))
+
+      if (!uploadResponse.ok) {
+        console.log('Upload response NOT OK, attempting to parse error...')
+
+        let uploadError
+        try {
+          // Clone the response so we can read it twice if needed
+          const responseClone = uploadResponse.clone()
+          const responseText = await responseClone.text()
+          console.log('Raw error response text:', responseText)
+          console.log('Response text length:', responseText.length)
+
+          if (responseText.trim()) {
+            try {
+              uploadError = JSON.parse(responseText)
+              console.log('Parsed error object:', uploadError)
+            } catch (jsonError) {
+              console.error('JSON parse failed:', jsonError)
+              console.log('Response is not valid JSON, treating as plain text error')
+              uploadError = {
+                error: 'Server returned non-JSON error',
+                details: responseText.length > 200 ? responseText.substring(0, 200) + '...' : responseText,
+                fullResponse: responseText
+              }
+            }
+          } else {
+            console.log('Empty response body')
+            uploadError = {
+              error: 'Empty response from server',
+              details: `Server returned ${uploadResponse.status} ${uploadResponse.statusText} with no content`
+            }
+          }
+        } catch (parseError) {
+          console.error('Failed to read error response:', parseError)
+          console.log('Parse error details:', {
+            name: parseError instanceof Error ? parseError.name : 'unknown',
+            message: parseError instanceof Error ? parseError.message : String(parseError),
+            stack: parseError instanceof Error ? parseError.stack : 'no stack trace'
+          })
+          uploadError = {
+            error: 'Could not read server response',
+            details: `Read error: ${parseError instanceof Error ? parseError.message : String(parseError)}`
+          }
+        }
+
+        // Create detailed error message from backend response
+        let errorMessage = uploadError.error || 'Upload failed'
+        if (uploadError.details) {
+          errorMessage += ': ' + uploadError.details
+        }
+
+        // Special handling for production payload size errors
+        if (uploadResponse.status === 413 || errorMessage.includes('too large')) {
+          console.error('FRONTEND: File size error detected')
+          if (uploadError.environment === 'production') {
+            errorMessage = `File too large for production. Maximum size is ${(uploadError.maxSize / (1024 * 1024)).toFixed(1)}MB, but your file is ${(uploadError.actualSize / (1024 * 1024)).toFixed(1)}MB. Please compress your file or use a smaller file.`
+          }
+        }
+
+        // For debugging purposes, include additional information
+        if (uploadError.fullResponse) {
+          console.error('Full server response:', uploadError.fullResponse)
+          // Don't include the full response in user-facing error to avoid overwhelming them
+        }
+
+        console.error('Final error message to display:', errorMessage)
+        console.error('Full error object:', uploadError)
+        throw new Error(errorMessage)
+      }
+
+      console.log('Upload response OK, parsing success response...')
+
+      let uploadResult
+      try {
+        const responseText = await uploadResponse.text()
+        console.log('Success response text:', responseText)
+        uploadResult = JSON.parse(responseText)
+        console.log('Parsed upload result:', uploadResult)
+      } catch (parseError) {
+        console.error('Failed to parse success response:', parseError)
+        throw new Error(`Success response could not be parsed: ${parseError instanceof Error ? parseError.message : String(parseError)}`)
+      }
+
       updateProgress('Processing audio/video...', 30)
 
       // Step 2: Start dubbing process
@@ -93,9 +284,9 @@ export default function Dashboard() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          fileName: uploadResult.fileName,
+          fileName: uploadResult.originalName,
           targetLanguage: targetLanguage,
-          filePath: uploadResult.filePath
+          tempFilePath: uploadResult.tempFilePath
         }),
       })
 
@@ -123,8 +314,27 @@ export default function Dashboard() {
       }, 500)
 
     } catch (error) {
-      console.error('Dubbing error:', error)
-      setError(error instanceof Error ? error.message : 'An error occurred during processing')
+      console.error('❌❌❌ FRONTEND: Error caught in main try-catch ❌❌❌')
+      console.error('FRONTEND: Error details:', error)
+      console.error('FRONTEND: Error type:', typeof error)
+      console.error('FRONTEND: Error constructor:', error?.constructor?.name)
+
+      if (error instanceof Error) {
+        console.error('FRONTEND: Error name:', error.name)
+        console.error('FRONTEND: Error message:', error.message)
+        console.error('FRONTEND: Error stack:', error.stack)
+
+        // Check for specific error patterns
+        if (error.message.includes('string did not match the expected pattern')) {
+          console.error('FRONTEND: 🔍 FOUND THE PATTERN ERROR!')
+          console.error('FRONTEND: This is likely a validation/parsing error in the frontend or Next.js')
+        }
+      }
+
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred during processing'
+      console.error('FRONTEND: Final error message to display:', errorMessage)
+
+      setError(errorMessage)
       setProcessing({ isProcessing: false, currentStep: '', progress: 0 })
     }
   }

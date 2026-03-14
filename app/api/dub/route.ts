@@ -1,39 +1,62 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ElevenLabsService } from '@/services/elevenlabs'
 import { OpenAIService } from '@/services/openai'
-import { extractAudioFromVideo, isVideoFile, isAudioFile } from '@/lib/audio-utils'
+import { extractAudioFromVideo, isVideoFile, isAudioFile, saveBase64Audio } from '@/lib/audio-utils'
+import { getUploadStrategy } from '@/lib/upload-utils'
 import path from 'path'
-import { writeFile, unlink } from 'fs/promises'
+import { writeFile, unlink, access } from 'fs/promises'
+import { tmpdir } from 'os'
 
 export async function POST(request: NextRequest) {
   let tempFiles: string[] = []
   let audioExtractionResult: any = null
   let processingStep = 'initialization'
+  const strategy = getUploadStrategy()
 
   try {
-    console.log('=== DUBBING PIPELINE START ===')
+    console.log('=== PRODUCTION-SAFE DUBBING PIPELINE START ===')
+    console.log(`Environment: ${strategy.environment}`)
     processingStep = 'parsing request'
 
     const body = await request.json()
-    const { fileName, targetLanguage, filePath } = body
+    const { fileName, targetLanguage, tempFilePath } = body
 
     console.log(`Received request:`)
     console.log(`- fileName: ${fileName}`)
     console.log(`- targetLanguage: ${targetLanguage}`)
-    console.log(`- filePath: ${filePath}`)
+    console.log(`- tempFilePath: ${tempFilePath}`)
 
-    if (!fileName || !targetLanguage || !filePath) {
+    if (!fileName || !targetLanguage || !tempFilePath) {
       const missingParams = []
       if (!fileName) missingParams.push('fileName')
       if (!targetLanguage) missingParams.push('targetLanguage')
-      if (!filePath) missingParams.push('filePath')
+      if (!tempFilePath) missingParams.push('tempFilePath')
 
       return NextResponse.json(
         {
           error: `Missing required parameters: ${missingParams.join(', ')}`,
-          step: processingStep
+          step: processingStep,
+          environment: strategy.environment
         },
         { status: 400 }
+      )
+    }
+
+    // Verify the temp file still exists
+    processingStep = 'file verification'
+    try {
+      await access(tempFilePath)
+      console.log(`Temp file verified: ${tempFilePath}`)
+    } catch (error) {
+      console.error(`Temp file not found: ${tempFilePath}`, error)
+      return NextResponse.json(
+        {
+          error: 'Uploaded file not found',
+          details: 'The uploaded file has expired or was not found. Please upload again.',
+          step: processingStep,
+          environment: strategy.environment
+        },
+        { status: 404 }
       )
     }
 
@@ -55,7 +78,8 @@ export async function POST(request: NextRequest) {
       throw new Error(`Service initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
 
-    let audioFilePath = filePath
+    let audioFilePath = tempFilePath
+    tempFiles.push(tempFilePath) // Add to cleanup list
 
     // Step 1: Determine file type and handle accordingly
     processingStep = 'file type detection'
@@ -79,12 +103,12 @@ export async function POST(request: NextRequest) {
       console.log('Video file detected, extracting audio...')
 
       try {
-        audioExtractionResult = await extractAudioFromVideo(filePath)
+        audioExtractionResult = await extractAudioFromVideo(tempFilePath, tmpdir())
         audioFilePath = audioExtractionResult.audioPath
-        tempFiles.push(audioExtractionResult.audioPath, audioExtractionResult.originalPath)
+        tempFiles.push(audioExtractionResult.audioPath)
 
         console.log(`Audio extraction successful:`)
-        console.log(`- Original video: ${filePath}`)
+        console.log(`- Original video: ${tempFilePath}`)
         console.log(`- Extracted audio: ${audioFilePath}`)
       } catch (error) {
         console.error('Audio extraction failed:', error)
@@ -94,7 +118,6 @@ export async function POST(request: NextRequest) {
       processingStep = 'audio file processing'
       console.log('=== AUDIO PROCESSING FLOW ===')
       console.log('Audio file detected, proceeding with speech-to-text...')
-      tempFiles.push(filePath)
     }
 
     // Step 2: Speech to Text
@@ -146,26 +169,61 @@ export async function POST(request: NextRequest) {
       throw new Error(`Text-to-speech generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
 
-    // Step 5: Save the generated audio
-    const outputDir = path.join(process.cwd(), 'public', 'generated')
-    try {
-      const { mkdir } = await import('fs/promises')
-      await mkdir(outputDir, { recursive: true })
-    } catch (error) {
-      // Directory might already exist
-    }
+    // Step 5: Save the generated audio in production-safe way
+    processingStep = 'saving generated audio'
+    console.log('=== SAVING GENERATED AUDIO ===')
 
     const outputFileName = `dubbed_${Date.now()}_${targetLanguage}.mp3`
-    const outputPath = path.join(outputDir, outputFileName)
-    const publicUrl = `/generated/${outputFileName}`
+    let outputPath: string
+    let publicUrl: string
 
-    // Convert base64 to file
-    const audioBuffer = Buffer.from(base64Audio, 'base64')
-    await writeFile(outputPath, audioBuffer)
+    if (strategy.environment === 'production') {
+      // In production, save to temp directory and return as data URL or base64
+      outputPath = path.join(tmpdir(), outputFileName)
+      console.log(`Production mode: saving audio to temp: ${outputPath}`)
+
+      const audioBuffer = Buffer.from(base64Audio, 'base64')
+      await writeFile(outputPath, audioBuffer)
+      tempFiles.push(outputPath)
+
+      // Create data URL for production
+      publicUrl = `data:audio/mpeg;base64,${base64Audio}`
+      console.log(`Production mode: using data URL for audio (${base64Audio.length} chars)`)
+
+    } else {
+      // In development, save to public directory
+      const outputDir = path.join(process.cwd(), 'public', 'generated')
+      try {
+        const { mkdir } = await import('fs/promises')
+        await mkdir(outputDir, { recursive: true })
+        console.log(`Development mode: created output directory: ${outputDir}`)
+      } catch (error) {
+        // Directory might already exist
+      }
+
+      outputPath = path.join(outputDir, outputFileName)
+      publicUrl = `/generated/${outputFileName}`
+      console.log(`Development mode: saving audio to: ${outputPath}`)
+
+      const audioBuffer = Buffer.from(base64Audio, 'base64')
+      await writeFile(outputPath, audioBuffer)
+    }
 
     console.log('Dubbing pipeline completed successfully')
 
-    // Clean up temporary files
+    const result = {
+      success: true,
+      originalText: originalText,
+      translatedText: translatedText,
+      audioUrl: publicUrl,
+      targetLanguage: targetLanguage,
+      processingTime: Date.now(),
+      environment: strategy.environment,
+      outputFileName: outputFileName
+    }
+
+    // Clean up temporary files (but not the output file in development)
+    console.log('Starting cleanup of temporary files...')
     setTimeout(async () => {
       for (const tempFile of tempFiles) {
         try {
@@ -175,16 +233,9 @@ export async function POST(request: NextRequest) {
           console.error(`Failed to cleanup ${tempFile}:`, error)
         }
       }
-    }, 1000)
+    }, 2000) // Give a bit more time before cleanup
 
-    return NextResponse.json({
-      success: true,
-      originalText: originalText,
-      translatedText: translatedText,
-      audioUrl: publicUrl,
-      targetLanguage: targetLanguage,
-      processingTime: Date.now()
-    })
+    return NextResponse.json(result)
 
   } catch (error) {
     console.error(`=== DUBBING PIPELINE FAILED ===`)
@@ -192,6 +243,7 @@ export async function POST(request: NextRequest) {
     console.error('Error details:', error)
 
     // Clean up temporary files on error
+    console.log('Cleaning up temporary files due to error...')
     for (const tempFile of tempFiles) {
       try {
         await unlink(tempFile)
@@ -217,6 +269,7 @@ export async function POST(request: NextRequest) {
       {
         error: errorMessage,
         step: processingStep,
+        environment: strategy.environment,
         details: {
           step: processingStep,
           timestamp: new Date().toISOString(),
@@ -230,3 +283,5 @@ export async function POST(request: NextRequest) {
 
 // Configure route segment options for App Router
 export const maxDuration = 300 // 5 minutes timeout for long processing
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
