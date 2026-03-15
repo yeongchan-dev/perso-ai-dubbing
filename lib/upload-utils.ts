@@ -42,16 +42,14 @@ export function validateFile(file: File): { valid: boolean; error?: string } {
 
   // Check file type
   const fileName = file.name.toLowerCase()
-  const videoExtensions = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v']
   const audioExtensions = ['.mp3', '.wav', '.flac', '.m4a', '.aac', '.ogg']
 
-  const isVideo = videoExtensions.some(ext => fileName.endsWith(ext))
   const isAudio = audioExtensions.some(ext => fileName.endsWith(ext))
 
-  if (!isVideo && !isAudio) {
+  if (!isAudio) {
     return {
       valid: false,
-      error: `Invalid file type. Supported formats: ${[...audioExtensions, ...videoExtensions].join(', ')}`
+      error: `Invalid file type. Only audio files are supported: ${audioExtensions.join(', ')}`
     }
   }
 
@@ -88,9 +86,8 @@ export async function processUploadedFile(file: File): Promise<ChunkUploadResult
     console.log(`[UPLOAD-UTILS] Writing ${buffer.length} bytes to temp file...`)
     await writeFile(tempFilePath, buffer)
 
-    // Determine file types
+    // Determine file type - audio only
     const fileName = file.name.toLowerCase()
-    const isVideo = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v'].some(ext => fileName.endsWith(ext))
     const isAudio = ['.mp3', '.wav', '.flac', '.m4a', '.aac', '.ogg'].some(ext => fileName.endsWith(ext))
 
     console.log(`[UPLOAD-UTILS] File processed successfully: ${file.name}`)
@@ -101,8 +98,8 @@ export async function processUploadedFile(file: File): Promise<ChunkUploadResult
       originalName: file.name,
       fileSize: file.size,
       fileType: file.type,
-      isVideo,
-      isAudio,
+      isVideo: false,
+      isAudio: true,
       cleanup: async () => {
         try {
           await unlink(tempFilePath)

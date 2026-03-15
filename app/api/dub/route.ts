@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ElevenLabsService } from '@/services/elevenlabs'
 import { OpenAIService } from '@/services/openai'
-import { extractAudioFromVideo, isVideoFile, isAudioFile, saveBase64Audio } from '@/lib/audio-utils'
+import { isAudioFile, saveBase64Audio } from '@/lib/audio-utils'
 import { getUploadStrategy } from '@/lib/upload-utils'
 import path from 'path'
 import { writeFile, unlink, access } from 'fs/promises'
@@ -9,7 +9,6 @@ import { tmpdir } from 'os'
 
 export async function POST(request: NextRequest) {
   let tempFiles: string[] = []
-  let audioExtractionResult: any = null
   let processingStep = 'initialization'
   const strategy = getUploadStrategy()
 
@@ -131,40 +130,19 @@ export async function POST(request: NextRequest) {
     processingStep = 'file type detection'
     console.log(`Detecting file type for: ${fileName}`)
 
-    const isVideo = isVideoFile(fileName)
     const isAudio = isAudioFile(fileName)
 
     console.log(`File type detection results:`)
-    console.log(`- Is video: ${isVideo}`)
     console.log(`- Is audio: ${isAudio}`)
 
-    if (!isVideo && !isAudio) {
-      throw new Error(`Unsupported file type: ${fileName}. Supported types: audio (MP3, WAV, M4A, AAC, OGG) and video (MP4, MOV, AVI, MKV, WEBM)`)
+    if (!isAudio) {
+      throw new Error(`Unsupported file type: ${fileName}. Only audio files are supported: MP3, WAV, M4A, AAC, OGG, FLAC`)
     }
 
-    // Step 1a: Extract audio from video if necessary
-    if (isVideo) {
-      processingStep = 'video audio extraction'
-      console.log('=== VIDEO PROCESSING FLOW ===')
-      console.log('Video file detected, extracting audio...')
-
-      try {
-        audioExtractionResult = await extractAudioFromVideo(actualFilePath, tmpdir())
-        audioFilePath = audioExtractionResult.audioPath
-        tempFiles.push(audioExtractionResult.audioPath)
-
-        console.log(`Audio extraction successful:`)
-        console.log(`- Original video: ${actualFilePath}`)
-        console.log(`- Extracted audio: ${audioFilePath}`)
-      } catch (error) {
-        console.error('Audio extraction failed:', error)
-        throw new Error(`Video audio extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
-      }
-    } else if (isAudio) {
-      processingStep = 'audio file processing'
-      console.log('=== AUDIO PROCESSING FLOW ===')
-      console.log('Audio file detected, proceeding with speech-to-text...')
-    }
+    // Audio file processing only
+    processingStep = 'audio file processing'
+    console.log('=== AUDIO PROCESSING FLOW ===')
+    console.log('Audio file detected, proceeding with speech-to-text...')
 
     // Step 2: Speech to Text
     processingStep = 'speech to text'
@@ -299,14 +277,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (audioExtractionResult?.cleanup) {
-      try {
-        await audioExtractionResult.cleanup()
-        console.log('Audio extraction cleanup completed')
-      } catch (cleanupError) {
-        console.error('Failed to cleanup audio extraction:', cleanupError)
-      }
-    }
+    // Audio extraction cleanup not needed for audio-only files
 
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
 

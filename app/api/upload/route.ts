@@ -96,16 +96,15 @@ export async function POST(request: NextRequest) {
       // Convert file to buffer immediately
       const fileBuffer = Buffer.from(await file.arrayBuffer())
 
-      // Validate file
+      // Validate file - audio only
       const lowerFileName = file.name.toLowerCase()
-      const isVideo = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v'].some(ext => lowerFileName.endsWith(ext))
       const isAudio = ['.mp3', '.wav', '.flac', '.m4a', '.aac', '.ogg'].some(ext => lowerFileName.endsWith(ext))
 
-      if (!isVideo && !isAudio) {
+      if (!isAudio) {
         return NextResponse.json(
           {
             error: 'Invalid file type',
-            details: `File extension not supported. Supported formats: mp3, wav, flac, m4a, aac, ogg, mp4, mov, avi, mkv, webm, m4v`
+            details: `Only audio files are supported. Supported formats: mp3, wav, flac, m4a, aac, ogg`
           },
           { status: 400 }
         )
@@ -121,8 +120,8 @@ export async function POST(request: NextRequest) {
         originalName: file.name,
         fileSize: file.size,
         fileType: file.type,
-        isVideo,
-        isAudio,
+        isVideo: false,
+        isAudio: true,
         // Pass the file buffer as base64 for production processing
         fileBuffer: fileBuffer.toString('base64'),
         processingTimeMs: processingTime,
@@ -165,8 +164,8 @@ export async function POST(request: NextRequest) {
         originalName: uploadResult.originalName,
         fileSize: uploadResult.fileSize,
         fileType: uploadResult.fileType,
-        isVideo: uploadResult.isVideo,
-        isAudio: uploadResult.isAudio,
+        isVideo: false,
+        isAudio: true,
         tempFilePath: uploadResult.tempFilePath,
         processingTimeMs: processingTime,
         environment: strategy.environment,

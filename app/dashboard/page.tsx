@@ -33,6 +33,7 @@ export default function Dashboard() {
   })
   const [result, setResult] = useState<DubbingResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [dragOver, setDragOver] = useState(false)
 
   useEffect(() => {
     if (status === 'loading') return
@@ -81,6 +82,29 @@ export default function Dashboard() {
     }
   }
 
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    setDragOver(false)
+
+    const files = event.dataTransfer.files
+    if (files.length > 0) {
+      const file = files[0]
+      setSelectedFile(file)
+      setResult(null)
+      setError(null)
+    }
+  }
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    setDragOver(true)
+  }
+
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    setDragOver(false)
+  }
+
   const updateProgress = (step: string, progress: number) => {
     setProcessing(prev => ({
       ...prev,
@@ -106,18 +130,23 @@ export default function Dashboard() {
 
     console.log('FRONTEND: Prerequisites satisfied, starting upload process')
 
-    // Pre-check file size for better UX
-    const maxSizeBytes = 50 * 1024 * 1024 // 50MB general limit
-    const productionMaxBytes = 4.5 * 1024 * 1024 // 4.5MB production limit
+    // Check if file is audio only
+    const audioExtensions = ['.mp3', '.wav', '.flac', '.m4a', '.aac', '.ogg']
+    const isAudioFile = audioExtensions.some(ext => selectedFile.name.toLowerCase().endsWith(ext))
 
-    if (selectedFile.size > maxSizeBytes) {
-      console.error(`FRONTEND: File too large - ${selectedFile.size} bytes > ${maxSizeBytes} bytes`)
-      setError(`File too large. Maximum size is 50MB, but your file is ${(selectedFile.size / (1024 * 1024)).toFixed(1)}MB. Please use a smaller file.`)
+    if (!isAudioFile) {
+      console.error(`FRONTEND: Invalid file type - ${selectedFile.name}`)
+      setError(`Only audio files are supported. Supported formats: MP3, WAV, FLAC, M4A, AAC, OGG`)
       return
     }
 
-    if (selectedFile.size > productionMaxBytes) {
-      console.warn(`FRONTEND: File size warning - file is ${(selectedFile.size / (1024 * 1024)).toFixed(1)}MB, which may fail in production (limit: 4.5MB)`)
+    // Pre-check file size for better UX
+    const maxSizeBytes = 4.5 * 1024 * 1024 // 4.5MB production-safe limit
+
+    if (selectedFile.size > maxSizeBytes) {
+      console.error(`FRONTEND: File too large - ${selectedFile.size} bytes > ${maxSizeBytes} bytes`)
+      setError(`Audio file too large. Maximum size is 4.5MB for production deployment, but your file is ${(selectedFile.size / (1024 * 1024)).toFixed(1)}MB. Please use a smaller audio file.`)
+      return
     }
 
     setError(null)
@@ -326,7 +355,7 @@ export default function Dashboard() {
         }
 
       // Continue processing after successful upload
-      updateProgress('Processing audio/video...', 30)
+      updateProgress('Processing audio...', 30)
 
       // Step 2: Start dubbing process
       const dubbingResponse = await fetch('/api/dub', {
@@ -404,10 +433,10 @@ export default function Dashboard() {
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-2 text-gray-600">Loading...</p>
+      <div className="min-h-screen flex items-center justify-center bg-[#1a1a1a]">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-slate-600 border-t-transparent"></div>
+          <p className="text-gray-100 text-lg">Loading...</p>
         </div>
       </div>
     )
@@ -418,102 +447,263 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto py-8 px-4">
-        <div className="bg-white rounded-lg shadow-lg p-8">
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                AI Dubbing Dashboard
-              </h1>
-              <p className="text-gray-600 mt-2">
-                Welcome, {session?.user?.email}
-              </p>
-            </div>
-            <button
-              onClick={() => signOut({ callbackUrl: '/' })}
-              className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+    <>
+      <style jsx>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
+      <div className="min-h-screen" style={{ backgroundColor: '#1a1a1a', color: '#ffffff', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+        {/* Header */}
+      <div className="flex justify-between items-center p-4 max-w-3xl mx-auto">
+        <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#ffffff', margin: '0' }}>AI Audio Dubbing</h1>
+        <button
+          onClick={() => signOut({ callbackUrl: '/' })}
+          style={{
+            backgroundColor: '#4a4a4a',
+            color: '#ffffff',
+            padding: '8px 16px',
+            borderRadius: '6px',
+            border: '1px solid #6a6a6a',
+            fontSize: '14px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            transition: 'background-color 0.2s'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5a5a5a'}
+          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#4a4a4a'}
+        >
+          Sign Out
+        </button>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-3xl mx-auto px-4 pb-8">
+        <div className="text-center mb-6">
+          <p style={{ color: '#f3f4f6', fontSize: '18px', fontWeight: '500', margin: '0' }}>Upload an audio file and generate a dubbed version in another language</p>
+        </div>
+
+        {/* Main Card */}
+        <div style={{
+          backgroundColor: '#2a2a2a',
+          borderRadius: '12px',
+          padding: '24px',
+          border: '1px solid #3a3a3a',
+          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+        }}>
+
+          {/* Upload Section */}
+          <div className="mb-6">
+            <div
+              className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
+                dragOver
+                  ? 'border-blue-400 bg-blue-500/5'
+                  : selectedFile
+                    ? 'border-green-400 bg-green-500/5'
+                    : 'border-[#4a4a4a] hover:border-[#5a5a5a]'
+              }`}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
             >
-              Sign Out
-            </button>
+              <input
+                type="file"
+                accept="audio/*"
+                className="hidden"
+                id="file-upload"
+                onChange={handleFileSelect}
+                disabled={processing.isProcessing}
+              />
+
+              {selectedFile ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{
+                      width: '32px',
+                      height: '32px',
+                      backgroundColor: 'rgba(34, 197, 94, 0.2)',
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <svg width="16" height="16" fill="none" stroke="#22c55e" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p style={{ color: '#ffffff', fontWeight: '600', fontSize: '18px', margin: '0' }}>{selectedFile.name}</p>
+                      <p style={{ color: '#d1d5db', fontSize: '14px', margin: '0' }}>{(selectedFile.size / (1024 * 1024)).toFixed(2)} MB</p>
+                    </div>
+                  </div>
+                  <label
+                    htmlFor="file-upload"
+                    style={{
+                      backgroundColor: '#6366f1',
+                      color: '#ffffff',
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      border: 'none',
+                      transition: 'background-color 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5856eb'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#6366f1'}
+                  >
+                    Change
+                  </label>
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
+                    <div style={{
+                      width: '48px',
+                      height: '48px',
+                      backgroundColor: '#3a3a3a',
+                      borderRadius: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <svg width="24" height="24" fill="none" stroke="#d1d5db" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor="file-upload" style={{ cursor: 'pointer' }}>
+                      <span style={{ color: '#ffffff', fontSize: '16px', fontWeight: '600' }}>Drop your audio file here or </span>
+                      <span style={{
+                        color: '#6366f1',
+                        fontSize: '16px',
+                        fontWeight: '700',
+                        textDecoration: 'underline'
+                      }}>browse</span>
+                    </label>
+                    <p style={{ color: '#d1d5db', fontSize: '14px', marginTop: '8px', fontWeight: '500' }}>MP3, WAV, FLAC, M4A, AAC, OGG (max 4MB)</p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-8">
-            <div>
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">
-                Upload Media
-              </h2>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                <input
-                  type="file"
-                  accept="audio/*,video/*"
-                  className="hidden"
-                  id="file-upload"
-                  onChange={handleFileSelect}
-                  disabled={processing.isProcessing}
-                />
-                <label
-                  htmlFor="file-upload"
-                  className={`cursor-pointer flex flex-col items-center ${
-                    processing.isProcessing ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
-                >
-                  <svg className="w-12 h-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 48 48">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" />
-                  </svg>
-                  <p className="text-gray-600 mb-2">
-                    {selectedFile ? selectedFile.name : 'Click to upload media'}
-                  </p>
-                  <p className="text-sm text-gray-500">MP3, WAV, MP4, MOV up to 50MB</p>
-                </label>
+          {/* Target Language Section */}
+          <div className="mb-6">
+            <div className="flex items-center space-x-3 mb-3">
+              <div className="w-6 h-6 bg-[#3a3a3a] rounded-full flex items-center justify-center">
+                <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+                </svg>
               </div>
+              <h3 className="text-lg text-white font-semibold">Target Language</h3>
             </div>
 
-            <div>
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">
-                Target Language
-              </h2>
+            <div style={{ position: 'relative' }}>
               <select
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 value={targetLanguage}
                 onChange={(e) => setTargetLanguage(e.target.value)}
                 disabled={processing.isProcessing}
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  backgroundColor: '#1a1a1a',
+                  border: '1px solid #4a4a4a',
+                  borderRadius: '8px',
+                  color: '#ffffff',
+                  fontSize: '16px',
+                  fontWeight: '500',
+                  appearance: 'none',
+                  cursor: 'pointer',
+                  backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m6 8 4 4 4-4'/%3e%3c/svg%3e")`,
+                  backgroundPosition: 'right 12px center',
+                  backgroundRepeat: 'no-repeat',
+                  backgroundSize: '16px 16px',
+                  outline: 'none'
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = '#6366f1'
+                  e.currentTarget.style.boxShadow = '0 0 0 2px rgba(99, 102, 241, 0.2)'
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = '#4a4a4a'
+                  e.currentTarget.style.boxShadow = 'none'
+                }}
               >
-                <option value="">Select target language</option>
-                <option value="en">English</option>
-                <option value="ko">Korean</option>
-                <option value="ja">Japanese</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="de">German</option>
-                <option value="it">Italian</option>
-                <option value="pt">Portuguese</option>
+                <option value="" style={{ backgroundColor: '#1a1a1a', color: '#9ca3af' }}>Select target language</option>
+                <option value="en" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>🇺🇸 English</option>
+                <option value="ko" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>🇰🇷 Korean</option>
+                <option value="ja" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>🇯🇵 Japanese</option>
+                <option value="es" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>🇪🇸 Spanish</option>
+                <option value="fr" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>🇫🇷 French</option>
+                <option value="de" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>🇩🇪 German</option>
+                <option value="it" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>🇮🇹 Italian</option>
+                <option value="pt" style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}>🇵🇹 Portuguese</option>
               </select>
-
-              <button
-                className="w-full mt-6 bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={startDubbing}
-                disabled={!selectedFile || !targetLanguage || processing.isProcessing}
-              >
-                {processing.isProcessing ? 'Processing...' : 'Start Dubbing'}
-              </button>
             </div>
           </div>
 
+          {/* Start Dubbing Button */}
+          <button
+            onClick={startDubbing}
+            disabled={!selectedFile || !targetLanguage || processing.isProcessing}
+            style={{
+              width: '100%',
+              backgroundColor: (!selectedFile || !targetLanguage || processing.isProcessing) ? '#4a4a4a' : '#6366f1',
+              color: '#ffffff',
+              padding: '14px 24px',
+              borderRadius: '8px',
+              fontSize: '18px',
+              fontWeight: '700',
+              border: 'none',
+              cursor: (!selectedFile || !targetLanguage || processing.isProcessing) ? 'not-allowed' : 'pointer',
+              opacity: (!selectedFile || !targetLanguage || processing.isProcessing) ? '0.6' : '1',
+              transition: 'all 0.2s',
+              boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
+            }}
+            onMouseEnter={(e) => {
+              if (!e.currentTarget.disabled) {
+                e.currentTarget.style.backgroundColor = '#5856eb'
+                e.currentTarget.style.transform = 'translateY(-1px)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!e.currentTarget.disabled) {
+                e.currentTarget.style.backgroundColor = '#6366f1'
+                e.currentTarget.style.transform = 'translateY(0)'
+              }
+            }}
+          >
+            {processing.isProcessing ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '20px',
+                  height: '20px',
+                  border: '2px solid #ffffff',
+                  borderTop: '2px solid transparent',
+                  borderRadius: '50%',
+                  animation: 'spin 1s linear infinite'
+                }}></div>
+                <span style={{ fontWeight: '600' }}>Processing...</span>
+              </div>
+            ) : (
+              'Start Dubbing'
+            )}
+          </button>
+
           {/* Processing Status */}
           {processing.isProcessing && (
-            <div className="mt-8 p-6 bg-blue-50 rounded-lg">
-              <h3 className="text-lg font-semibold text-blue-800 mb-4">
-                Processing Status
-              </h3>
+            <div className="mt-6 p-4 bg-[#1a1a1a] rounded-lg border border-[#3a3a3a]">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-blue-700">{processing.currentStep}</span>
-                  <span className="text-blue-600 font-medium">{processing.progress}%</span>
+                  <span className="text-white text-base font-medium">{processing.currentStep}</span>
+                  <span className="text-[#6366f1] font-bold text-base">{processing.progress}%</span>
                 </div>
-                <div className="w-full bg-blue-200 rounded-full h-2">
+                <div className="w-full bg-[#3a3a3a] rounded-full h-2">
                   <div
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-500"
+                    className="bg-[#6366f1] h-2 rounded-full transition-all duration-300"
                     style={{ width: `${processing.progress}%` }}
                   ></div>
                 </div>
@@ -523,75 +713,83 @@ export default function Dashboard() {
 
           {/* Error Display */}
           {error && (
-            <div className="mt-8 p-6 bg-red-50 rounded-lg border border-red-200">
-              <h3 className="text-lg font-semibold text-red-800 mb-2">
-                Error
-              </h3>
-              <p className="text-red-700">{error}</p>
+            <div className="mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+              <h3 className="text-red-300 font-bold mb-2 text-base">Error</h3>
+              <p className="text-gray-100 text-sm leading-relaxed">{error}</p>
             </div>
           )}
 
-          {/* Results Display */}
+          {/* Results - Dubbed Audio */}
           {result && (
-            <div className="mt-8 p-6 bg-green-50 rounded-lg border border-green-200">
-              <div className="flex justify-between items-start mb-4">
-                <h3 className="text-lg font-semibold text-green-800">
-                  Dubbing Complete!
-                </h3>
-                <button
-                  onClick={downloadAudio}
-                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  Download
-                </button>
-              </div>
+            <div className="mt-6">
+              <div className="bg-[#1a1a1a] rounded-lg p-5 border border-[#3a3a3a]">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-8 h-8 bg-[#3a3a3a] rounded-full flex items-center justify-center">
+                      <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg text-white font-bold">Dubbed Audio</h3>
+                  </div>
 
-              <div className="space-y-4">
-                <div>
-                  <h4 className="font-semibold text-gray-800 mb-2">Original Text:</h4>
-                  <p className="text-gray-700 bg-white p-3 rounded border">{result.originalText}</p>
-                </div>
-
-                <div>
-                  <h4 className="font-semibold text-gray-800 mb-2">Translated Text ({result.targetLanguage}):</h4>
-                  <p className="text-gray-700 bg-white p-3 rounded border">{result.translatedText}</p>
-                </div>
-
-                <div>
-                  <h4 className="font-semibold text-gray-800 mb-2">Generated Audio:</h4>
-                  <audio
-                    controls
-                    className="w-full"
-                    src={result.audioUrl}
+                  <button
+                    onClick={downloadAudio}
+                    className="bg-[#4a4a4a] hover:bg-[#5a5a5a] px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 font-semibold text-sm border border-[#6a6a6a]"
+                    style={{ color: '#ffffff' }}
                   >
-                    Your browser does not support the audio element.
-                  </audio>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span>Download</span>
+                  </button>
                 </div>
-              </div>
-            </div>
-          )}
 
-          {/* Empty State */}
-          {!processing.isProcessing && !result && !error && (
-            <div className="mt-8 p-6 bg-gray-50 rounded-lg">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">
-                Getting Started
-              </h3>
-              <div className="text-gray-600 space-y-2">
-                <p>1. Upload an audio or video file</p>
-                <p>2. Select your target language</p>
-                <p>3. Click "Start Dubbing" to begin processing</p>
-                <p className="text-sm mt-4 text-gray-500">
-                  The AI will extract speech, translate it, and generate dubbed audio in your selected language.
-                </p>
+                <div className="space-y-4">
+                  {/* Audio Player */}
+                  <div className="bg-[#2a2a2a] p-4 rounded-lg border border-[#3a3a3a]">
+                    <audio
+                      controls
+                      className="w-full h-10 rounded-lg"
+                      src={result.audioUrl}
+                      style={{
+                        filter: 'invert(1) hue-rotate(180deg)',
+                        borderRadius: '8px',
+                        backgroundColor: 'transparent'
+                      }}
+                    >
+                      Your browser does not support the audio element.
+                    </audio>
+                  </div>
+
+                  {/* Text Results - Only show if there's substantial content */}
+                  {(result.originalText || result.translatedText) && (
+                    <div className="grid md:grid-cols-2 gap-4">
+                      {result.originalText && (
+                        <div>
+                          <h4 className="text-white font-bold mb-2 text-sm">Original Text</h4>
+                          <div className="bg-[#2a2a2a] p-3 rounded-lg text-gray-100 text-sm max-h-20 overflow-y-auto leading-relaxed">
+                            {result.originalText}
+                          </div>
+                        </div>
+                      )}
+                      {result.translatedText && (
+                        <div>
+                          <h4 className="text-white font-bold mb-2 text-sm">Translated Text ({result.targetLanguage.toUpperCase()})</h4>
+                          <div className="bg-[#2a2a2a] p-3 rounded-lg text-gray-100 text-sm max-h-20 overflow-y-auto leading-relaxed">
+                            {result.translatedText}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   )
 }

@@ -89,10 +89,17 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        // Determine file types
+        // Validate audio file only
         const lowerFileName = fileName.toLowerCase()
-        const isVideo = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v'].some(ext => lowerFileName.endsWith(ext))
         const isAudio = ['.mp3', '.wav', '.flac', '.m4a', '.aac', '.ogg'].some(ext => lowerFileName.endsWith(ext))
+
+        if (!isAudio) {
+          await unlink(finalFilePath).catch(() => {})
+          return NextResponse.json(
+            { error: 'Only audio files are supported' },
+            { status: 400 }
+          )
+        }
 
         return NextResponse.json({
           success: true,
@@ -102,8 +109,8 @@ export async function POST(request: NextRequest) {
           tempFilePath: finalFilePath,
           fileSize: stats.size,
           fileType: '', // We don't have MIME type from chunks
-          isVideo,
-          isAudio,
+          isVideo: false,
+          isAudio: true,
           uploadId,
           chunked: true,
           inMemoryProcessing: false,  // Chunked uploads use file system
