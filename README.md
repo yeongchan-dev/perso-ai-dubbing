@@ -1,87 +1,160 @@
-# AI Dubbing Web Service
+# AI Audio Dubbing Service
 
-An AI-powered dubbing web service that converts audio or video files into different languages using speech-to-text, translation, and text-to-speech technologies.
+Live Demo  
+https://perso-ai-dubbing.vercel.app
 
-## Features
+## Demo
 
-- **File Upload**: Support for audio (MP3, WAV) and video (MP4, MOV) files
-- **Multi-language Support**: English, Korean, Japanese, Spanish
-- **AI Pipeline**: Speech-to-text → Translation → Text-to-speech
-- **Authentication**: Google OAuth with email whitelist
-- **Real-time Processing**: Live status updates during dubbing process
+### Main Interface
 
-## Tech Stack
+![Screenshot1](./screenshot1.png)
 
-- **Frontend**: Next.js 14 with App Router, TypeScript, TailwindCSS
-- **Database**: Turso (SQLite-compatible cloud database)
-- **AI APIs**: ElevenLabs (speech processing), OpenAI (translation)
-- **Authentication**: NextAuth.js with Google OAuth
-- **Deployment**: Vercel
+### Dubbing Result
 
-## Getting Started
+![Screenshot2](./screenshot2.png)
 
-### Prerequisites
+AI Audio Dubbing is a web application that automatically translates spoken audio into another language and generates dubbed speech using AI.
 
-1. Node.js 18+ installed
-2. API keys for:
-   - ElevenLabs API
-   - OpenAI API
-   - Turso database
-   - Google OAuth credentials
+Users can upload an audio file, choose a target language, and the system will transcribe, translate, and generate a dubbed audio file that can be played and downloaded directly from the browser.
 
-### Installation
+---
 
-1. Clone the repository
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+# Service Overview
 
-3. Set up environment variables:
-   ```bash
-   cp .env.example .env.local
-   ```
-   Fill in your actual API keys and credentials.
+This service demonstrates an AI-powered pipeline that converts speech from one language into another.
 
-4. Set up the database:
-   - Create a Turso database
-   - Run the schema from `db/schema.sql`
-   - Add allowed user emails to the `allowed_users` table
+The workflow is as follows:
 
-5. Start the development server:
-   ```bash
-   npm run dev
-   ```
+1. Upload an audio file
+2. Transcribe the speech using AI (Speech-to-Text)
+3. Translate the text into another language
+4. Generate dubbed audio using Text-to-Speech
+5. Play the generated audio in the browser
+6. Download the dubbed audio file
 
-### Environment Variables
+The application provides a simple interface that allows users to perform multilingual dubbing without any technical setup.
 
-See `.env.example` for required environment variables.
+---
 
-## Project Structure
+# Main Features
 
-```
-├── app/                    # Next.js App Router pages
-│   ├── api/               # API routes
-│   ├── dashboard/         # Dashboard page
-│   ├── login/            # Login page
-│   └── layout.tsx        # Root layout
-├── components/           # Reusable UI components
-├── db/                  # Database schema and utilities
-├── lib/                 # Utility functions and types
-└── services/           # External API integrations
-```
+- Upload audio files (MP3, WAV, FLAC, M4A, AAC, OGG)
+- Automatic speech recognition (Speech-to-Text)
+- Automatic translation into another language
+- AI-generated dubbed audio (Text-to-Speech)
+- In-browser audio playback
+- Download generated dubbed audio
+- Google authentication login
+- Deployed cloud service via Vercel
 
-## Deployment
+---
 
-1. Deploy to Vercel:
-   ```bash
-   npm run build
-   ```
+# Tech Stack
 
-2. Set environment variables in Vercel dashboard
+### Frontend
+- Next.js
+- TypeScript
+- Tailwind CSS
 
-3. Configure your domain and SSL
+### AI Services
+- OpenAI API
+- ElevenLabs
 
-## License
+### Database
+- Turso (SQLite edge database)
 
-MIT
+### Authentication
+- Google OAuth
+
+### Deployment
+- Vercel
+
+---
+
+# Local Development
+
+### 1. Clone the repository
+
+git clone https://github.com/yeongchan-dev/perso-ai-dubbing.git
+
+### 2. Move into the project directory
+
+cd perso-ai-dubbing
+
+### 3. Install dependencies
+
+npm install
+
+### 4. Set environment variables
+
+Create a `.env.local` file and add your API key.
+
+OPENAI_API_KEY=your_api_key
+
+See .env.example for required environment variablesa
+
+### 5. Run the development server
+
+npm run dev
+
+Open in browser:
+
+http://localhost:3000
+
+---
+
+# Deployed Service URL
+
+The deployed application can be accessed here:
+
+https://perso-ai-dubbing.vercel.app
+
+---
+
+# Using AI Coding Agents
+
+This project was primarily developed using **Claude** as a coding agent for generating and implementing the core application logic and UI components.
+
+Additional assistance from **ChatGPT** was used for debugging support, documentation guidance, and development explanations.
+
+AI coding agents were used for:
+
+- Generating and refining frontend UI code
+- Implementing application logic
+- Debugging build and runtime errors
+- Improving user interface readability and usability
+- Fixing deployment issues
+- Assisting with project documentation
+
+Through iterative interaction with AI coding agents, the development process became significantly faster and more efficient.
+
+---
+
+# Limitations and Scope Decision
+
+This project currently supports **audio dubbing only**.
+
+During development, video dubbing functionality was considered. However, the deployed production environment (Vercel serverless architecture) introduced several limitations when handling large media files such as videos.
+
+Key limitations included:
+
+- Serverless environments have strict limits on file size and processing time
+- Video files require significantly more storage and processing resources than audio files
+- Temporary file handling for large media uploads was less reliable in the deployed environment
+- Processing large video files would require a more complex storage and processing pipeline
+
+Because the goal of this project was to deliver a **stable deployed service**, the final scope was intentionally limited to audio input and audio output.
+
+Future versions of this project could extend the architecture to support full video dubbing by introducing more advanced media storage and processing workflows.
+
+---
+
+# Future Improvements
+
+Possible future extensions include:
+
+- Video dubbing support
+- Multiple target language options
+- Improved UI/UX design
+- Audio waveform visualization
+- Batch processing for multiple files
