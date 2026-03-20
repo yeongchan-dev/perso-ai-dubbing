@@ -7,11 +7,11 @@ https://perso-ai-dubbing.vercel.app
 
 ### Main Interface
 
-![Screenshot1](./screenshot1.png)
+![Screenshot1](./screenshot_1.png)
 
 ### Dubbing Result
 
-![Screenshot2](./screenshot2.png)
+![Screenshot2](./screenshot_2.png)
 
 AI Audio & Video Dubbing is a web application that automatically translates spoken audio/video into another language and generates dubbed speech using AI.
 
