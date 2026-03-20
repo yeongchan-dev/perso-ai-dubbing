@@ -103,7 +103,7 @@ Create a `.env.local` file and add your API key.
 
 OPENAI_API_KEY=your_api_key
 
-See .env.example for required environment variablesa
+See .env.example for required environment variables
 
 ### 5. Run the development server
 
