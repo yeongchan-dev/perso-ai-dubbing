@@ -14,6 +14,8 @@
   "description": "",
   "dependencies": {
     "@auth/core": "^0.34.3",
+    "@ffmpeg/ffmpeg": "^0.12.10",
+    "@ffmpeg/util": "^0.12.1",
     "@libsql/client": "^0.17.0",
     "@types/formidable": "^3.5.0",
     "@types/node": "^25.5.0",

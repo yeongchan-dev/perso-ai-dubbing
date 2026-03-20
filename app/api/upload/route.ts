@@ -88,6 +88,21 @@ export async function POST(request: NextRequest) {
 
     console.log(`[UPLOAD API] File received: ${file.name} (${file.size} bytes, ${file.type})`)
 
+    // Validate file - audio and video support (moved to common scope)
+    const lowerFileName = file.name.toLowerCase()
+    const isAudio = ['.mp3', '.wav', '.flac', '.m4a', '.aac', '.ogg'].some(ext => lowerFileName.endsWith(ext))
+    const isVideo = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv', '.wmv', '.m4v', '.3gp'].some(ext => lowerFileName.endsWith(ext))
+
+    if (!isAudio && !isVideo) {
+      return NextResponse.json(
+        {
+          error: 'Invalid file type',
+          details: `Only audio and video files are supported. Audio: mp3, wav, flac, m4a, aac, ogg. Video: mp4, mov, avi, mkv, webm, flv, wmv, m4v, 3gp`
+        },
+        { status: 400 }
+      )
+    }
+
     // For production, process small files in-memory instead of temp files
     // This avoids the file system sharing issue between serverless functions
     if (strategy.environment === 'production') {
@@ -95,20 +110,6 @@ export async function POST(request: NextRequest) {
 
       // Convert file to buffer immediately
       const fileBuffer = Buffer.from(await file.arrayBuffer())
-
-      // Validate file - audio only
-      const lowerFileName = file.name.toLowerCase()
-      const isAudio = ['.mp3', '.wav', '.flac', '.m4a', '.aac', '.ogg'].some(ext => lowerFileName.endsWith(ext))
-
-      if (!isAudio) {
-        return NextResponse.json(
-          {
-            error: 'Invalid file type',
-            details: `Only audio files are supported. Supported formats: mp3, wav, flac, m4a, aac, ogg`
-          },
-          { status: 400 }
-        )
-      }
 
       const processingTime = Date.now() - startTime
       console.log(`[UPLOAD API] Production upload completed in ${processingTime}ms`)
@@ -120,8 +121,8 @@ export async function POST(request: NextRequest) {
         originalName: file.name,
         fileSize: file.size,
         fileType: file.type,
-        isVideo: false,
-        isAudio: true,
+        isVideo: isVideo,
+        isAudio: isAudio,
         // Pass the file buffer as base64 for production processing
         fileBuffer: fileBuffer.toString('base64'),
         processingTimeMs: processingTime,
@@ -164,8 +165,8 @@ export async function POST(request: NextRequest) {
         originalName: uploadResult.originalName,
         fileSize: uploadResult.fileSize,
         fileType: uploadResult.fileType,
-        isVideo: false,
-        isAudio: true,
+        isVideo: isVideo,
+        isAudio: isAudio,
         tempFilePath: uploadResult.tempFilePath,
         processingTimeMs: processingTime,
         environment: strategy.environment,

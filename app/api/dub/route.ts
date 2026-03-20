@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ElevenLabsService } from '@/services/elevenlabs'
 import { OpenAIService } from '@/services/openai'
-import { isAudioFile, saveBase64Audio } from '@/lib/audio-utils'
+import { isAudioFile, saveBase64Audio, isVideoFile, extractAudioFromVideo } from '@/lib/audio-utils'
 import { getUploadStrategy } from '@/lib/upload-utils'
 import path from 'path'
 import { writeFile, unlink, access } from 'fs/promises'
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     processingStep = 'parsing request'
 
     const body = await request.json()
-    const { fileName, targetLanguage, tempFilePath, fileBuffer, inMemoryProcessing, chunked } = body
+    const { fileName, targetLanguage, tempFilePath, fileBuffer, inMemoryProcessing, chunked, isVideo } = body
 
     console.log(`Received request:`)
     console.log(`- fileName: ${fileName}`)
@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
     console.log(`- tempFilePath: ${tempFilePath}`)
     console.log(`- inMemoryProcessing: ${inMemoryProcessing}`)
     console.log(`- chunked: ${chunked}`)
+    console.log(`- isVideo: ${isVideo}`)
 
     if (!fileName || !targetLanguage) {
       const missingParams = []
@@ -131,18 +132,37 @@ export async function POST(request: NextRequest) {
     console.log(`Detecting file type for: ${fileName}`)
 
     const isAudio = isAudioFile(fileName)
+    const isVideoFile = isVideo || false  // Use the passed isVideo flag or detect from filename
 
     console.log(`File type detection results:`)
     console.log(`- Is audio: ${isAudio}`)
+    console.log(`- Is video: ${isVideoFile}`)
 
-    if (!isAudio) {
-      throw new Error(`Unsupported file type: ${fileName}. Only audio files are supported: MP3, WAV, M4A, AAC, OGG, FLAC`)
+    if (!isAudio && !isVideoFile) {
+      throw new Error(`Unsupported file type: ${fileName}. Supported formats - Audio: MP3, WAV, M4A, AAC, OGG, FLAC. Video: MP4, MOV, AVI, MKV, WEBM`)
     }
 
-    // Audio file processing only
+    // Handle video files by extracting audio
+    if (isVideoFile && !isAudio) {
+      processingStep = 'video to audio extraction'
+      console.log('=== VIDEO PROCESSING FLOW ===')
+      console.log('Video file detected, extracting audio...')
+
+      try {
+        const audioExtraction = await extractAudioFromVideo(actualFilePath)
+        audioFilePath = audioExtraction.audioPath
+        tempFiles.push(audioExtraction.audioPath) // Add extracted audio to cleanup list
+        console.log(`Audio extracted successfully: ${audioFilePath}`)
+      } catch (extractionError) {
+        console.error('Audio extraction failed:', extractionError)
+        throw new Error(`Failed to extract audio from video: ${extractionError instanceof Error ? extractionError.message : 'Unknown error'}`)
+      }
+    }
+
+    // Audio file processing (either original audio or extracted from video)
     processingStep = 'audio file processing'
     console.log('=== AUDIO PROCESSING FLOW ===')
-    console.log('Audio file detected, proceeding with speech-to-text...')
+    console.log('Proceeding with speech-to-text from audio file...')
 
     // Step 2: Speech to Text
     processingStep = 'speech to text'

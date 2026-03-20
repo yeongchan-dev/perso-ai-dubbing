@@ -1,4 +1,4 @@
-# AI Audio Dubbing Service
+# AI Audio & Video Dubbing Service
 
 Live Demo  
 https://perso-ai-dubbing.vercel.app
@@ -13,9 +13,11 @@ https://perso-ai-dubbing.vercel.app
 
 ![Screenshot2](./screenshot2.png)
 
-AI Audio Dubbing is a web application that automatically translates spoken audio into another language and generates dubbed speech using AI.
+AI Audio & Video Dubbing is a web application that automatically translates spoken audio/video into another language and generates dubbed speech using AI.
 
-Users can upload an audio file, choose a target language, and the system will transcribe, translate, and generate a dubbed audio file that can be played and downloaded directly from the browser.
+Users can upload an audio file or video file, choose a target language, and the system will transcribe, translate, and generate a dubbed audio file that can be played and downloaded directly from the browser.
+
+**NEW:** Video files are automatically processed on your device - large videos are cropped to 1 minute for mobile-friendly upload and processing.
 
 ---
 
@@ -25,12 +27,13 @@ This service demonstrates an AI-powered pipeline that converts speech from one l
 
 The workflow is as follows:
 
-1. Upload an audio file
-2. Transcribe the speech using AI (Speech-to-Text)
-3. Translate the text into another language
-4. Generate dubbed audio using Text-to-Speech
-5. Play the generated audio in the browser
-6. Download the dubbed audio file
+1. Upload an audio file or video file
+2. **[Video only]** Client-side processing: Crop video to 1 minute and extract audio
+3. Transcribe the speech using AI (Speech-to-Text)
+4. Translate the text into another language
+5. Generate dubbed audio using Text-to-Speech
+6. Play the generated audio in the browser
+7. Download the dubbed audio file
 
 The application provides a simple interface that allows users to perform multilingual dubbing without any technical setup.
 
@@ -39,6 +42,10 @@ The application provides a simple interface that allows users to perform multili
 # Main Features
 
 - Upload audio files (MP3, WAV, FLAC, M4A, AAC, OGG)
+- **NEW:** Upload video files (MP4, MOV, AVI, MKV, WEBM)
+- **NEW:** Client-side video processing for mobile-friendly upload
+- **NEW:** Automatic 1-minute cropping for large videos
+- **NEW:** Real-time video processing progress with FFmpeg.wasm
 - Automatic speech recognition (Speech-to-Text)
 - Automatic translation into another language
 - AI-generated dubbed audio (Text-to-Speech)
@@ -55,16 +62,21 @@ The application provides a simple interface that allows users to perform multili
 - Next.js
 - TypeScript
 - Tailwind CSS
+- **NEW:** FFmpeg.wasm (client-side video processing)
 
 ### AI Services
-- OpenAI API
-- ElevenLabs
+- OpenAI API (translation)
+- ElevenLabs (speech-to-text, text-to-speech)
 
 ### Database
 - Turso (SQLite edge database)
 
 ### Authentication
 - Google OAuth
+
+### Media Processing
+- **Client-side:** FFmpeg.wasm (video cropping, audio extraction)
+- **Server-side:** FFmpeg-static (audio processing backup)
 
 ### Deployment
 - Vercel
@@ -130,22 +142,35 @@ Through iterative interaction with AI coding agents, the development process bec
 
 ---
 
-# Limitations and Scope Decision
+# Video Processing Implementation
 
-This project currently supports **audio dubbing only**.
+This project now supports **both audio and video dubbing** with intelligent client-side processing.
 
-During development, video dubbing functionality was considered. However, the deployed production environment (Vercel serverless architecture) introduced several limitations when handling large media files such as videos.
+## Client-Side Video Processing
 
-Key limitations included:
+To address serverless environment limitations, video processing is handled entirely on the client side:
 
-- Serverless environments have strict limits on file size and processing time
-- Video files require significantly more storage and processing resources than audio files
-- Temporary file handling for large media uploads was less reliable in the deployed environment
-- Processing large video files would require a more complex storage and processing pipeline
+- **FFmpeg.wasm** processes videos directly in the browser
+- Videos longer than 60 seconds are automatically trimmed to the first 1 minute
+- Audio is extracted from videos before upload
+- No server-side video processing required
 
-Because the goal of this project was to deliver a **stable deployed service**, the final scope was intentionally limited to audio input and audio output.
+## Mobile Compatibility
 
-Future versions of this project could extend the architecture to support full video dubbing by introducing more advanced media storage and processing workflows.
+The client-side approach ensures compatibility with mobile devices:
+
+- Works on modern mobile browsers (iOS Safari, Android Chrome)
+- Processing happens on the user's device
+- No additional server resources required
+- Maintains privacy by keeping video processing local
+
+## Technical Benefits
+
+- **Scalable:** No server resources used for video processing
+- **Fast:** Parallel processing on user's device
+- **Cost-effective:** Reduces server computational load
+- **Privacy-friendly:** Videos never uploaded in full to servers
+- **Mobile-optimized:** 1-minute limit ensures reasonable processing times
 
 ---
 
@@ -153,8 +178,11 @@ Future versions of this project could extend the architecture to support full vi
 
 Possible future extensions include:
 
-- Video dubbing support
+- ~~Video dubbing support~~ ✅ **COMPLETED**
+- Support for longer videos (beyond 1 minute)
+- Video output with lip-sync dubbing
 - Multiple target language options
 - Improved UI/UX design
 - Audio waveform visualization
 - Batch processing for multiple files
+- Real-time video preview during processing

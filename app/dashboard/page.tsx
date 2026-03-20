@@ -4,6 +4,7 @@ import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { ChunkedUploader, shouldUseChunkedUpload } from '@/lib/chunked-upload'
+import { VideoProcessor, isVideoFile, isAudioFile, shouldProcessVideo } from '@/lib/video-utils'
 
 interface DubbingResult {
   success: boolean
@@ -20,6 +21,12 @@ interface ProcessingState {
   progress: number
 }
 
+interface VideoProcessingState {
+  isProcessingVideo: boolean
+  videoStep: string
+  videoProgress: number
+}
+
 export default function Dashboard() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -31,9 +38,16 @@ export default function Dashboard() {
     currentStep: '',
     progress: 0
   })
+  const [videoProcessing, setVideoProcessing] = useState<VideoProcessingState>({
+    isProcessingVideo: false,
+    videoStep: '',
+    videoProgress: 0
+  })
   const [result, setResult] = useState<DubbingResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [processedFile, setProcessedFile] = useState<File | null>(null)
+  const [videoProcessor] = useState(() => new VideoProcessor())
 
   useEffect(() => {
     if (status === 'loading') return
@@ -73,6 +87,7 @@ export default function Dashboard() {
         setSelectedFile(file)
         setResult(null)
         setError(null)
+        setProcessedFile(null)
         console.log('FRONTEND: File selection completed successfully')
       } catch (setFileError) {
         console.error('FRONTEND: Error setting selected file:', setFileError)
@@ -92,6 +107,7 @@ export default function Dashboard() {
       setSelectedFile(file)
       setResult(null)
       setError(null)
+      setProcessedFile(null)
     }
   }
 
@@ -130,22 +146,56 @@ export default function Dashboard() {
 
     console.log('FRONTEND: Prerequisites satisfied, starting upload process')
 
-    // Check if file is audio only
-    const audioExtensions = ['.mp3', '.wav', '.flac', '.m4a', '.aac', '.ogg']
-    const isAudioFile = audioExtensions.some(ext => selectedFile.name.toLowerCase().endsWith(ext))
+    // Check file type and handle accordingly
+    const isAudio = isAudioFile(selectedFile.name)
+    const isVideo = isVideoFile(selectedFile.name)
 
-    if (!isAudioFile) {
+    if (!isAudio && !isVideo) {
       console.error(`FRONTEND: Invalid file type - ${selectedFile.name}`)
-      setError(`Only audio files are supported. Supported formats: MP3, WAV, FLAC, M4A, AAC, OGG`)
+      setError(`Only audio and video files are supported. Audio: MP3, WAV, FLAC, M4A, AAC, OGG. Video: MP4, MOV, AVI, MKV, WEBM`)
       return
     }
 
-    // Pre-check file size for better UX
+    // If it's a video file, process it first
+    let fileToUpload = selectedFile
+    if (isVideo) {
+      console.log('FRONTEND: Video file detected, starting client-side processing...')
+
+      // Check if video processing is needed and get details
+      const { needsProcessing, reason, willCrop } = await shouldProcessVideo(selectedFile)
+      console.log(`FRONTEND: Video processing needed: ${needsProcessing}, willCrop: ${willCrop}, reason: ${reason}`)
+
+      if (!needsProcessing) {
+        console.log('FRONTEND: Video processing not needed, using file as-is')
+        // This shouldn't happen for video files, but just in case
+      } else {
+        setVideoProcessing({ isProcessingVideo: true, videoStep: 'Analyzing video...', videoProgress: 5 })
+
+        try {
+          fileToUpload = await videoProcessor.processVideoForUpload(selectedFile, (step, progress) => {
+            console.log(`FRONTEND: Video processing - ${step}: ${progress}%`)
+            setVideoProcessing({ isProcessingVideo: true, videoStep: step, videoProgress: progress })
+          })
+
+          setProcessedFile(fileToUpload)
+          setVideoProcessing({ isProcessingVideo: false, videoStep: '', videoProgress: 0 })
+          console.log('FRONTEND: Video processing completed, proceeding with audio file upload')
+
+        } catch (videoError) {
+          console.error('FRONTEND: Video processing failed:', videoError)
+          setVideoProcessing({ isProcessingVideo: false, videoStep: '', videoProgress: 0 })
+          setError(`Video processing failed: ${videoError instanceof Error ? videoError.message : 'Unknown error'}. Please try with a smaller video file or audio file directly.`)
+          return
+        }
+      }
+    }
+
+    // Pre-check file size for better UX (using the processed file if video was processed)
     const maxSizeBytes = 4.5 * 1024 * 1024 // 4.5MB production-safe limit
 
-    if (selectedFile.size > maxSizeBytes) {
-      console.error(`FRONTEND: File too large - ${selectedFile.size} bytes > ${maxSizeBytes} bytes`)
-      setError(`Audio file too large. Maximum size is 4.5MB for production deployment, but your file is ${(selectedFile.size / (1024 * 1024)).toFixed(1)}MB. Please use a smaller audio file.`)
+    if (fileToUpload.size > maxSizeBytes) {
+      console.error(`FRONTEND: File too large - ${fileToUpload.size} bytes > ${maxSizeBytes} bytes`)
+      setError(`Processed file too large. Maximum size is 4.5MB for production deployment, but your processed file is ${(fileToUpload.size / (1024 * 1024)).toFixed(1)}MB. Please try with a shorter video or smaller audio file.`)
       return
     }
 
@@ -158,11 +208,13 @@ export default function Dashboard() {
 
       // Step 1: Upload file
       console.log('===== FRONTEND UPLOAD START =====')
-      console.log('Selected file details:')
-      console.log('  name:', selectedFile.name)
-      console.log('  size:', selectedFile.size)
-      console.log('  type:', selectedFile.type)
-      console.log('  lastModified:', selectedFile.lastModified)
+      console.log('File to upload details:')
+      console.log('  original name:', selectedFile.name)
+      console.log('  upload file name:', fileToUpload.name)
+      console.log('  upload size:', fileToUpload.size)
+      console.log('  upload type:', fileToUpload.type)
+      console.log('  was video processed:', isVideo)
+      console.log('  lastModified:', fileToUpload.lastModified)
 
       console.log('FRONTEND: About to create FormData...')
       let formData
@@ -171,7 +223,7 @@ export default function Dashboard() {
         console.log('FRONTEND: FormData created successfully')
 
         console.log('FRONTEND: About to append file to FormData...')
-        formData.append('file', selectedFile)
+        formData.append('file', fileToUpload)
         console.log('FRONTEND: File appended to FormData successfully')
 
         console.log('FRONTEND: FormData validation - checking entries:')
@@ -199,14 +251,14 @@ export default function Dashboard() {
       let uploadResult
 
       // Determine upload strategy based on file size
-      const useChunked = shouldUseChunkedUpload(selectedFile, 'production') // Always check production limits
+      const useChunked = shouldUseChunkedUpload(fileToUpload, 'production') // Always check production limits
 
       if (useChunked) {
         console.log('⚡⚡⚡ FRONTEND: Using chunked upload for large file ⚡⚡⚡')
         updateProgress('Uploading large file in chunks...', 15)
 
         try {
-          const chunkedUploader = new ChunkedUploader(selectedFile, {
+          const chunkedUploader = new ChunkedUploader(fileToUpload, {
             onProgress: (progress, currentChunk, totalChunks) => {
               console.log(`FRONTEND: Chunk progress: ${progress}% (${currentChunk}/${totalChunks})`)
               updateProgress(`Uploading chunk ${currentChunk}/${totalChunks}...`, 10 + (progress * 0.2)) // 10-30% for upload
@@ -369,7 +421,8 @@ export default function Dashboard() {
           ...(uploadResult.tempFilePath && { tempFilePath: uploadResult.tempFilePath }),
           ...(uploadResult.fileBuffer && { fileBuffer: uploadResult.fileBuffer }),
           inMemoryProcessing: uploadResult.inMemoryProcessing,
-          chunked: uploadResult.chunked
+          chunked: uploadResult.chunked,
+          isVideo: uploadResult.isVideo
         }),
       })
 
@@ -481,7 +534,8 @@ export default function Dashboard() {
       {/* Main Content */}
       <div className="max-w-3xl mx-auto px-4 pb-8">
         <div className="text-center mb-6">
-          <p style={{ color: '#f3f4f6', fontSize: '18px', fontWeight: '500', margin: '0' }}>Upload an audio file and generate a dubbed version in another language</p>
+          <p style={{ color: '#f3f4f6', fontSize: '18px', fontWeight: '500', margin: '0' }}>Upload an audio or video file and generate a dubbed version in another language</p>
+          <p style={{ color: '#9ca3af', fontSize: '14px', fontWeight: '400', margin: '8px 0 0 0' }}>Videos over 60 seconds will be trimmed to the first 1 minute on your device before upload</p>
         </div>
 
         {/* Main Card */}
@@ -509,11 +563,11 @@ export default function Dashboard() {
             >
               <input
                 type="file"
-                accept="audio/*"
+                accept="audio/*,video/*"
                 className="hidden"
                 id="file-upload"
                 onChange={handleFileSelect}
-                disabled={processing.isProcessing}
+                disabled={processing.isProcessing || videoProcessing.isProcessingVideo}
               />
 
               {selectedFile ? (
@@ -575,7 +629,7 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <label htmlFor="file-upload" style={{ cursor: 'pointer' }}>
-                      <span style={{ color: '#ffffff', fontSize: '16px', fontWeight: '600' }}>Drop your audio file here or </span>
+                      <span style={{ color: '#ffffff', fontSize: '16px', fontWeight: '600' }}>Drop your audio or video file here or </span>
                       <span style={{
                         color: '#6366f1',
                         fontSize: '16px',
@@ -583,7 +637,8 @@ export default function Dashboard() {
                         textDecoration: 'underline'
                       }}>browse</span>
                     </label>
-                    <p style={{ color: '#d1d5db', fontSize: '14px', marginTop: '8px', fontWeight: '500' }}>MP3, WAV, FLAC, M4A, AAC, OGG (max 4MB)</p>
+                    <p style={{ color: '#d1d5db', fontSize: '14px', marginTop: '8px', fontWeight: '500' }}>Audio: MP3, WAV, FLAC, M4A, AAC, OGG</p>
+                    <p style={{ color: '#d1d5db', fontSize: '14px', marginTop: '4px', fontWeight: '500' }}>Video: MP4, MOV, AVI, MKV, WEBM (&gt;60s auto-trimmed)</p>
                   </div>
                 </div>
               )}
@@ -648,18 +703,18 @@ export default function Dashboard() {
           {/* Start Dubbing Button */}
           <button
             onClick={startDubbing}
-            disabled={!selectedFile || !targetLanguage || processing.isProcessing}
+            disabled={!selectedFile || !targetLanguage || processing.isProcessing || videoProcessing.isProcessingVideo}
             style={{
               width: '100%',
-              backgroundColor: (!selectedFile || !targetLanguage || processing.isProcessing) ? '#4a4a4a' : '#6366f1',
+              backgroundColor: (!selectedFile || !targetLanguage || processing.isProcessing || videoProcessing.isProcessingVideo) ? '#4a4a4a' : '#6366f1',
               color: '#ffffff',
               padding: '14px 24px',
               borderRadius: '8px',
               fontSize: '18px',
               fontWeight: '700',
               border: 'none',
-              cursor: (!selectedFile || !targetLanguage || processing.isProcessing) ? 'not-allowed' : 'pointer',
-              opacity: (!selectedFile || !targetLanguage || processing.isProcessing) ? '0.6' : '1',
+              cursor: (!selectedFile || !targetLanguage || processing.isProcessing || videoProcessing.isProcessingVideo) ? 'not-allowed' : 'pointer',
+              opacity: (!selectedFile || !targetLanguage || processing.isProcessing || videoProcessing.isProcessingVideo) ? '0.6' : '1',
               transition: 'all 0.2s',
               boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
             }}
@@ -676,7 +731,7 @@ export default function Dashboard() {
               }
             }}
           >
-            {processing.isProcessing ? (
+            {(processing.isProcessing || videoProcessing.isProcessingVideo) ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
                 <div style={{
                   width: '20px',
@@ -686,14 +741,33 @@ export default function Dashboard() {
                   borderRadius: '50%',
                   animation: 'spin 1s linear infinite'
                 }}></div>
-                <span style={{ fontWeight: '600' }}>Processing...</span>
+                <span style={{ fontWeight: '600' }}>{videoProcessing.isProcessingVideo ? 'Processing Video...' : 'Processing Audio...'}</span>
               </div>
             ) : (
               'Start Dubbing'
             )}
           </button>
 
-          {/* Processing Status */}
+          {/* Video Processing Status */}
+          {videoProcessing.isProcessingVideo && (
+            <div className="mt-6 p-4 bg-[#1a1a1a] rounded-lg border border-[#3a3a3a]">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-white text-base font-medium">{videoProcessing.videoStep}</span>
+                  <span className="text-[#f59e0b] font-bold text-base">{videoProcessing.videoProgress.toFixed(0)}%</span>
+                </div>
+                <div className="w-full bg-[#3a3a3a] rounded-full h-2">
+                  <div
+                    className="bg-[#f59e0b] h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${videoProcessing.videoProgress}%` }}
+                  ></div>
+                </div>
+                <p className="text-[#9ca3af] text-sm">Processing video on your device...</p>
+              </div>
+            </div>
+          )}
+
+          {/* Audio Processing Status */}
           {processing.isProcessing && (
             <div className="mt-6 p-4 bg-[#1a1a1a] rounded-lg border border-[#3a3a3a]">
               <div className="space-y-3">
